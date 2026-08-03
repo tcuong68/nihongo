@@ -1,0 +1,16 @@
+# File rác của hệ điều hành
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Thư mục của IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# Shortcut Windows: chứa đường dẫn tuyệt đối nên không dùng chung được giữa các máy.
+# Dùng setup-startup.ps1 để tạo lại trên từng máy.
+*.lnk
+
+# Bản xuất tiến độ học (dữ liệu cá nhân, mỗi máy một khác)
+nihongo-tien-do-*.json
