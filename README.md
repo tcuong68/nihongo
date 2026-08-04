@@ -59,7 +59,11 @@ và chốt lại một bộ khác cho hôm nay.
 > Đây là popup trong ứng dụng, không phải thông báo hệ thống — nó xuất hiện khi bạn mở app,
 > chứ không tự bật lên khi trình duyệt đang đóng.
 
-## Tự mở app khi khởi động Windows
+## Tự mở app
+
+Hai cách, chạy độc lập nhau — dùng một hoặc cả hai đều được.
+
+### Khi đăng nhập Windows
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File setup-startup.ps1
@@ -68,11 +72,37 @@ powershell -ExecutionPolicy Bypass -File setup-startup.ps1
 Script tạo một shortcut trong thư mục Startup của bạn, trỏ tới `index.html` trong chính
 thư mục đang chứa script. Gỡ bằng `remove-startup.ps1`.
 
-Cần chạy **một lần trên mỗi máy** sau khi clone. Không thể commit sẵn file `.lnk` vào repo vì
-shortcut Windows nhúng cứng đường dẫn tuyệt đối, mà thư mục Startup lại nằm ngoài project
-(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`) nên chỉ pull repo về thì không có gì tự chạy.
+Lưu ý: shortcut này chỉ kích hoạt **lúc đăng nhập**. Nếu bạn hay để máy bật liên tục nhiều
+ngày không tắt thì nó gần như không chạy lần nào — trường hợp đó dùng cách bên dưới.
 
-Script chỉ dùng được trên Windows.
+### Vào giờ cố định mỗi ngày
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup-daily.ps1
+powershell -ExecutionPolicy Bypass -File setup-daily.ps1 -At 21:30
+```
+
+Script tạo một scheduled task tên `NihongoDailyOpen` mở app hằng ngày, mặc định lúc **8:00**;
+đổi giờ bằng tham số `-At` dạng 24h. Chạy theo giờ nên không phụ thuộc việc đăng nhập.
+Gỡ bằng `remove-daily.ps1`.
+
+Nếu đúng giờ đó máy đang tắt hoặc ngủ, task sẽ chạy bù khi máy hoạt động lại thay vì bỏ qua
+luôn ngày hôm đó. Chạy lại script bất cứ lúc nào để đổi giờ, hoặc để cập nhật đường dẫn sau
+khi bạn di chuyển thư mục project. Không cần quyền admin.
+
+Thử ngay mà không đợi tới giờ:
+
+```powershell
+Start-ScheduledTask -TaskName NihongoDailyOpen
+```
+
+---
+
+Cả hai đều cần chạy **một lần trên mỗi máy** sau khi clone, và chỉ dùng được trên Windows.
+Không thể commit sẵn file `.lnk` hay scheduled task vào repo vì chúng nhúng cứng đường dẫn
+tuyệt đối và nằm ngoài project (thư mục Startup là
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`), nên chỉ pull repo về thì không có
+gì tự chạy.
 
 ## Dùng trên nhiều máy
 
@@ -102,6 +132,8 @@ js/app.js               định tuyến (hash router) và toàn bộ màn hình
 js/daily.js             popup "Kanji hôm nay" và trang học bộ chữ trong ngày
 setup-startup.ps1       tạo shortcut tự mở app khi đăng nhập Windows
 remove-startup.ps1      gỡ shortcut đó
+setup-daily.ps1         tạo scheduled task tự mở app vào giờ cố định mỗi ngày
+remove-daily.ps1        gỡ scheduled task đó
 js/data/vocab-n5.js     từ vựng bài 1–25
 js/data/vocab-n4.js     từ vựng bài 26–50
 js/data/kanji.js        bảng kanji N5 + N4
