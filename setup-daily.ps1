@@ -22,7 +22,7 @@ $ErrorActionPreference = 'Stop'
 
 $taskName = 'NihongoDailyOpen'
 $root     = $PSScriptRoot
-$target   = Join-Path $root 'index.html'
+$target   = Join-Path $root 'open-app.ps1'
 
 if (-not (Test-Path $target)) {
     Write-Error "Không tìm thấy '$target'. Hãy đặt script này trong thư mục gốc của project."
@@ -43,10 +43,12 @@ if ($existing) {
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
 }
 
-# rundll32 + FileProtocolHandler mở file bằng trình duyệt mặc định mà không nháy
-# cửa sổ console như 'cmd /c start'.
-$action = New-ScheduledTaskAction -Execute 'rundll32.exe' `
-    -Argument ('url.dll,FileProtocolHandler "' + $target + '"')
+# Gọi open-app.ps1 chứ không mở thẳng index.html: nó tự bật server cục bộ rồi mở
+# http://127.0.0.1:8765/ nếu có Python, không thì quay về mở file như cũ.
+# -WindowStyle Hidden để không nháy cửa sổ console.
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$target`"" `
+    -WorkingDirectory $root
 
 $trigger = New-ScheduledTaskTrigger -Daily -At $time
 

@@ -14,3 +14,10 @@ desktop.ini
 
 # Bản xuất tiến độ học (dữ liệu cá nhân, mỗi máy một khác)
 nihongo-tien-do-*.json
+
+# Snapshot app gửi cho phần nhắc ôn tập của Windows — sinh lại tự động, mỗi máy một khác
+progress-snapshot.json
+progress-snapshot.json.tmp
+
+# Thư mục cache của Python
+__pycache__/

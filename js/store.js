@@ -14,17 +14,23 @@ const Store = (() => {
     scores: {},   // { "N5-12-vocab": { best, last, count } }
     settings: { rate: 0.9, showRomaji: true, voice: '' },
     // Bộ kanji mỗi ngày: date/chars là bộ đã chốt cho hôm nay, shown là ngày đã hiện popup
-    daily: { enabled: true, count: 20, level: 'all', date: '', chars: [], shown: '' }
+    daily: { enabled: true, count: 20, level: 'all', date: '', chars: [], shown: '' },
+    // Bài mở gần nhất — dùng cho nhắc ôn tập hằng giờ (js/notify.js)
+    current: { level: '', lesson: 0, at: 0 }
   });
 
   let state = load();
+
+  // Chạy sau mỗi lần lưu, để notify.js gửi tiến độ về server cục bộ.
+  let afterSave = null;
 
   /** Bổ sung những khoá còn thiếu để bản lưu cũ vẫn dùng được với bản app mới. */
   function normalize(saved) {
     const d = defaults();
     const settings = Object.assign({}, d.settings, saved.settings || {});
     const daily = Object.assign({}, d.daily, saved.daily || {});
-    return Object.assign(d, saved, { settings, daily });
+    const current = Object.assign({}, d.current, saved.current || {});
+    return Object.assign(d, saved, { settings, daily, current });
   }
 
   function load() {
@@ -44,7 +50,13 @@ const Store = (() => {
     } catch (e) {
       console.warn('Không lưu được tiến độ.', e);
     }
+    // Hook không được phép làm hỏng việc lưu, nên nuốt lỗi ở đây.
+    if (afterSave) {
+      try { afterSave(state); } catch (e) { console.warn('Hook sau khi lưu lỗi.', e); }
+    }
   }
+
+  const onSave = fn => { afterSave = fn; };
 
   /** Mã định danh duy nhất cho một từ / kanji. */
   function wordId(level, lesson, word) {
@@ -116,6 +128,16 @@ const Store = (() => {
 
   function setDaily(patch) {
     Object.assign(state.daily, patch);
+    save();
+  }
+
+  const current = () => state.current;
+
+  /** Ghi nhận bài vừa mở. Mở lại đúng bài đó thì không lưu lại cho đỡ ghi thừa. */
+  function setCurrent(level, lesson) {
+    const c = state.current;
+    if (c.level === level && c.lesson === lesson) return;
+    state.current = { level, lesson, at: Date.now() };
     save();
   }
 
@@ -204,6 +226,7 @@ const Store = (() => {
   return {
     wordId, review, due, boxOf, toggleStar, isStarred,
     saveScore, getScore, setSetting, settings, daily, setDaily, stats, reset,
+    current, setCurrent, onSave,
     exportData, importData,
     raw: () => state
   };

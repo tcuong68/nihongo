@@ -223,6 +223,9 @@ route(/^\/lesson\/(N5|N4)\/(\d+)(?:\/(\w+))?$/, (level, nStr, tab) => {
   if (!d) { location.hash = `#/level/${level}`; return; }
   tab = tab || 'vocab';
 
+  // Bài mở gần nhất chính là "bài đang học" mà nhắc ôn tập hằng giờ sẽ bám theo.
+  Store.setCurrent(level, n);
+
   const ls = lessonsOf(level);
   const idx = ls.indexOf(n);
   const prev = idx > 0 ? ls[idx - 1] : null;

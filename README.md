@@ -7,13 +7,14 @@ bám theo giáo trình **Minna no Nihongo I & II**.
 
 **Cách 1 — nhanh nhất:** nháy đúp vào `index.html`, trình duyệt sẽ mở ngay.
 
-**Cách 2 — chạy qua web server cục bộ** (khuyến nghị nếu muốn dùng ổn định trên mọi trình duyệt):
+**Cách 2 — chạy qua web server cục bộ** (khuyến nghị nếu muốn dùng ổn định trên mọi trình duyệt,
+và **bắt buộc** nếu muốn dùng nhắc ôn tập bằng thông báo hệ thống):
 
 ```powershell
-python -m http.server 8000
+python server.py
 ```
 
-rồi mở http://localhost:8000
+rồi mở http://127.0.0.1:8765
 
 > Nên dùng **Chrome** hoặc **Edge** để có phần phát âm tiếng Nhật.
 
@@ -57,7 +58,62 @@ Trong **Cài đặt** có thể đổi số chữ mỗi ngày (5–50), giới h
 và chốt lại một bộ khác cho hôm nay.
 
 > Đây là popup trong ứng dụng, không phải thông báo hệ thống — nó xuất hiện khi bạn mở app,
-> chứ không tự bật lên khi trình duyệt đang đóng.
+> chứ không tự bật lên khi trình duyệt đang đóng. Muốn thông báo hệ thống thật thì xem
+> mục **Nhắc ôn tập mỗi giờ** bên dưới.
+
+## Nhắc ôn tập mỗi giờ
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup-notify.ps1
+powershell -ExecutionPolicy Bypass -File setup-notify.ps1 -From 9 -To 21
+```
+
+Mỗi giờ Windows hiện một **thông báo hệ thống** (toast) liệt kê những từ đến hạn ôn của
+**bài bạn mở gần nhất**. Mặc định chỉ nhắc trong khung **8h–22h** để máy để bật qua đêm
+không dựng bạn dậy lúc 3 giờ sáng; đổi bằng `-From` / `-To`. Bấm vào thông báo là mở
+thẳng tab từ vựng của bài đó. Không có từ nào đến hạn thì im lặng, không hiện gì.
+
+Nhắc chạy **kể cả khi đã đóng trình duyệt**. Gỡ bằng `remove-notify.ps1`.
+
+### Cách nó hoạt động
+
+Tiến độ nằm trong `localStorage`, mà `localStorage` thì Windows không đọc được — nên cần
+một đường dẫn dữ liệu ra ngoài:
+
+```
+app trong trình duyệt
+   │  mỗi lần lưu tiến độ, POST /api/progress
+   ▼
+server.py  (chạy nền, 127.0.0.1:8765)
+   │  ghi ra
+   ▼
+progress-snapshot.json
+   ▲
+   │  đọc mỗi giờ
+notify-review.ps1  ──▶  toast Windows
+```
+
+`setup-notify.ps1` tạo hai scheduled task: `NihongoServer` bật server khi đăng nhập, và
+`NihongoReview` gọi `notify-review.ps1` mỗi giờ.
+
+Vài điểm đáng biết:
+
+- Snapshot lưu **mốc đến hạn của từng từ** chứ không lưu danh sách "đang đến hạn", nên
+  `notify-review.ps1` tự tính lại vào lúc chạy. Snapshot cũ vài ngày vẫn cho kết quả đúng.
+- Server chỉ nghe trên `127.0.0.1`, máy khác trong mạng LAN không truy cập được.
+- App phải được mở qua **http://127.0.0.1:8765/** thì mới gửi được tiến độ. Mở bằng
+  `file://` app vẫn chạy đủ chức năng, chỉ là snapshot không cập nhật. `open-app.ps1`
+  (thứ mà `setup-daily.ps1` gọi) tự lo việc này.
+- Chromium chặn Notification API trên `file://`, nên thông báo do PowerShell bắn chứ không
+  phải do trang web bắn — đó là lý do có `server.py` thay vì vài dòng JS.
+- `progress-snapshot.json` chứa từ vựng của bài đang học và tiến độ của bạn, đã được
+  `.gitignore` bỏ qua.
+
+Thử ngay mà không đợi tới giờ:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File notify-review.ps1 -Force
+```
 
 ## Tự mở app
 
@@ -85,6 +141,10 @@ powershell -ExecutionPolicy Bypass -File setup-daily.ps1 -At 21:30
 Script tạo một scheduled task tên `NihongoDailyOpen` mở app hằng ngày, mặc định lúc **8:00**;
 đổi giờ bằng tham số `-At` dạng 24h. Chạy theo giờ nên không phụ thuộc việc đăng nhập.
 Gỡ bằng `remove-daily.ps1`.
+
+Task này gọi `open-app.ps1`: có Python thì nó bật `server.py` rồi mở `http://127.0.0.1:8765/`,
+không thì mở thẳng `index.html`. Mở qua địa chỉ localhost là điều kiện để phần
+**Nhắc ôn tập mỗi giờ** bên dưới có dữ liệu.
 
 Nếu đúng giờ đó máy đang tắt hoặc ngủ, task sẽ chạy bù khi máy hoạt động lại thay vì bỏ qua
 luôn ngày hôm đó. Chạy lại script bất cứ lúc nào để đổi giờ, hoặc để cập nhật đường dẫn sau
@@ -130,10 +190,16 @@ js/store.js             lưu tiến độ + thuật toán Leitner
 js/speech.js            phát âm qua Web Speech API
 js/app.js               định tuyến (hash router) và toàn bộ màn hình
 js/daily.js             popup "Kanji hôm nay" và trang học bộ chữ trong ngày
+js/notify.js            gửi tiến độ bài đang học sang server.py
+server.py               server cục bộ: phục vụ app + nhận snapshot tiến độ
+open-app.ps1            bật server rồi mở app (fallback về file:// nếu không có Python)
 setup-startup.ps1       tạo shortcut tự mở app khi đăng nhập Windows
 remove-startup.ps1      gỡ shortcut đó
 setup-daily.ps1         tạo scheduled task tự mở app vào giờ cố định mỗi ngày
 remove-daily.ps1        gỡ scheduled task đó
+setup-notify.ps1        bật nhắc ôn tập mỗi giờ bằng thông báo hệ thống
+notify-review.ps1       đọc snapshot và bắn toast Windows
+remove-notify.ps1       tắt nhắc ôn tập, dừng server
 js/data/vocab-n5.js     từ vựng bài 1–25
 js/data/vocab-n4.js     từ vựng bài 26–50
 js/data/kanji.js        bảng kanji N5 + N4
