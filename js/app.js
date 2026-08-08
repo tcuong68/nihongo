@@ -445,7 +445,8 @@ function renderListen(box, level, n) {
   function show(mode) {
     if (mode === 'sentence') return listenSentences(body, sentences);
     if (mode === 'dictation') return dictation(body, level, n, words);
-    return runQuiz(body, buildQuestions(words, 'listen', level, n), `${level}-${n}-listen`);
+    return batchedQuiz(body, () => buildQuestions(words, 'listen', level, n),
+      `${level}-${n}-listen`, 'từ');
   }
   show('word');
 }
@@ -474,16 +475,52 @@ function listenSentences(box, sentences) {
   });
 }
 
+/** Chép chính tả toàn bộ từ mới của bài, chia thành từng đợt như bài tập. */
 function dictation(box, level, n, words) {
-  const deck = shuffle(words).slice(0, Math.min(12, words.length));
+  let all = shuffle(words);
+  let r = 0;
+  if (!all.length) { box.innerHTML = `<p class="empty">Bài này chưa có từ vựng.</p>`; return; }
+
+  function round() {
+    const size = batchSize() > 0 ? Math.min(batchSize(), all.length) : all.length;
+    const rounds = Math.ceil(all.length / size);
+    if (r >= rounds) r = rounds - 1;
+    const from = r * size;
+
+    box.innerHTML = `
+      <div class="batch-head">
+        <div class="batch-info">Đợt <b>${r + 1}/${rounds}</b> · từ
+          ${from + 1}–${Math.min(from + size, all.length)} trong ${all.length} từ của bài</div>
+        <div class="batch-rounds">
+          ${Array.from({ length: rounds }, (_, k) =>
+            `<button class="round ${k === r ? 'on' : ''}" data-r="${k}">${k + 1}</button>`).join('')}
+          <button class="reshuffle" id="mix" title="Trộn lại toàn bộ và chia đợt mới">🔀</button>
+        </div>
+      </div>
+      <div id="dict-body"></div>`;
+
+    box.querySelectorAll('.round').forEach(b =>
+      b.addEventListener('click', () => { r = Number(b.dataset.r); round(); }));
+    box.querySelector('#mix').addEventListener('click', () => { all = shuffle(words); r = 0; round(); });
+
+    runDictation(box.querySelector('#dict-body'), level, n, all.slice(from, from + size),
+      r < rounds - 1 ? { label: `Đợt ${r + 2}/${rounds} →`, run: () => { r++; round(); } } : null,
+      () => round());
+  }
+  round();
+}
+
+function runDictation(box, level, n, deck, next, redo) {
   let i = 0, correct = 0;
 
   function draw() {
     if (i >= deck.length) {
       Store.saveScore(`${level}-${n}-dictation`, correct, deck.length);
       box.innerHTML = `<div class="done"><h3>Kết quả: ${correct}/${deck.length}</h3>
-        <button id="again">Làm lại</button></div>`;
-      box.querySelector('#again').addEventListener('click', () => dictation(box, level, n, words));
+        <button id="again">Làm lại đợt này</button>
+        ${next ? `<button id="next" class="primary">${esc(next.label)}</button>` : ''}</div>`;
+      box.querySelector('#again').addEventListener('click', redo);
+      if (next) box.querySelector('#next').addEventListener('click', next.run);
       return;
     }
     const w = deck[i];
@@ -530,41 +567,133 @@ const QUIZ_MODES = [
   ['grammar', 'Ngữ pháp']
 ];
 
+/** Số câu mỗi đợt làm bài. 0 = làm hết toàn bộ trong một lượt. */
+const BATCH_SIZES = [10, 15, 25, 40, 0];
+
+function batchSize() {
+  const v = Number(Store.settings().quizBatch);
+  return BATCH_SIZES.includes(v) ? v : 15;
+}
+
+/** Số từ của bài đã được luyện ít nhất một lần. */
+function practicedCount(level, n) {
+  return lessonData(level, n).words
+    .filter(w => Store.seenOf(Store.wordId(level, n, w)) > 0).length;
+}
+
 function renderQuiz(box, level, n) {
   const words = lessonData(level, n).words;
+  let mode = 'jp2vi';
+
   box.innerHTML = `
     <div class="toolbar">
       ${QUIZ_MODES.map(([id, label], i) =>
         `<button class="mode ${i === 0 ? 'on' : ''}" data-mode="${id}">${label}</button>`).join('')}
     </div>
+    <div class="toolbar batch-bar">
+      <label class="chk">Mỗi đợt
+        <select id="batch">${BATCH_SIZES.map(s =>
+          `<option value="${s}" ${s === batchSize() ? 'selected' : ''}>${s ? s + ' câu' : 'Làm hết một lượt'}</option>`
+        ).join('')}</select>
+      </label>
+      <span class="cover" id="cover"></span>
+    </div>
     <div id="quiz-body"></div>`;
 
   const body = box.querySelector('#quiz-body');
+
+  /** Bài tập phủ hết từ mới, nên hiển thị luôn đã đụng tới bao nhiêu từ. */
+  function updateCover() {
+    const done = practicedCount(level, n);
+    box.querySelector('#cover').innerHTML =
+      `Bài ${n} có <b>${words.length}</b> từ mới · đã luyện <b>${done}/${words.length}</b>`;
+  }
+
   box.querySelectorAll('.mode').forEach(b => {
     b.addEventListener('click', () => {
       box.querySelectorAll('.mode').forEach(x => x.classList.remove('on'));
       b.classList.add('on');
-      start(b.dataset.mode);
+      mode = b.dataset.mode;
+      start();
     });
   });
 
-  function start(mode) {
-    const qs = mode === 'grammar'
-      ? buildGrammarQuestions(n)
-      : buildQuestions(words, mode, level, n);
-    if (!qs.length) { body.innerHTML = `<p class="empty">Chưa đủ dữ liệu cho dạng bài này.</p>`; return; }
-    runQuiz(body, qs, `${level}-${n}-${mode}`, () => start(mode));
+  box.querySelector('#batch').addEventListener('change', e => {
+    Store.setSetting('quizBatch', Number(e.target.value));
+    start();
+  });
+
+  function start() {
+    if (mode === 'grammar') {
+      if (!buildGrammarQuestions(n).length) {
+        body.innerHTML = `<p class="empty">Bài này chưa có đủ câu ngữ pháp để luyện.</p>`;
+        return;
+      }
+      batchedQuiz(body, () => buildGrammarQuestions(n), `${level}-${n}-grammar`, 'câu', updateCover);
+      return;
+    }
+    if (words.length < 2) { body.innerHTML = `<p class="empty">Chưa đủ dữ liệu cho dạng bài này.</p>`; return; }
+    batchedQuiz(body, () => buildQuestions(words, mode, level, n),
+      `${level}-${n}-${mode}`, 'từ', updateCover);
   }
-  start('jp2vi');
+
+  updateCover();
+  start();
 }
 
-/** Sinh câu hỏi trắc nghiệm / điền từ từ danh sách từ vựng. */
+/**
+ * Chạy một bộ câu hỏi phủ kín phạm vi đã cho, chia thành các đợt nối tiếp nhau
+ * để không phải làm 60 câu một lần mà vẫn đi hết toàn bộ từ mới của bài.
+ * build() trả về toàn bộ câu hỏi đã trộn; gọi lại khi người học muốn trộn mới.
+ */
+function batchedQuiz(box, build, scoreKey, unit, onRoundDone) {
+  let all = build();
+  let r = 0;
+  if (!all.length) { box.innerHTML = `<p class="empty">Chưa đủ dữ liệu cho dạng bài này.</p>`; return; }
+
+  function draw() {
+    const size = batchSize() > 0 ? Math.min(batchSize(), all.length) : all.length;
+    const rounds = Math.ceil(all.length / size);
+    if (r >= rounds) r = rounds - 1;
+    const from = r * size;
+    const part = all.slice(from, from + size);
+
+    box.innerHTML = `
+      <div class="batch-head">
+        <div class="batch-info">Đợt <b>${r + 1}/${rounds}</b> · ${unit}
+          ${from + 1}–${from + part.length} trong ${all.length} ${unit} của bài</div>
+        <div class="batch-rounds">
+          ${Array.from({ length: rounds }, (_, k) =>
+            `<button class="round ${k === r ? 'on' : ''}" data-r="${k}">${k + 1}</button>`).join('')}
+          <button class="reshuffle" id="mix" title="Trộn lại toàn bộ và chia đợt mới">🔀</button>
+        </div>
+      </div>
+      <div id="round-body"></div>`;
+
+    box.querySelectorAll('.round').forEach(b =>
+      b.addEventListener('click', () => { r = Number(b.dataset.r); draw(); }));
+    box.querySelector('#mix').addEventListener('click', () => { all = build(); r = 0; draw(); });
+
+    // restart = null để nút "Làm lại" trộn lại đúng các câu của đợt này
+    runQuiz(box.querySelector('#round-body'), part, scoreKey, null, {
+      next: r < rounds - 1
+        ? { label: `Đợt ${r + 2}/${rounds} →`, run: () => { r++; draw(); } }
+        : null,
+      done: r === rounds - 1 && rounds > 1
+        ? `🎌 Bạn vừa đi hết ${all.length} ${unit} của bài ở dạng bài tập này.` : '',
+      onFinish: onRoundDone
+    });
+  }
+  draw();
+}
+
+/** Sinh câu hỏi trắc nghiệm / điền từ cho TOÀN BỘ từ vựng được truyền vào. */
 function buildQuestions(words, mode, level, lesson) {
   if (words.length < 2) return [];
   const pool = allWords(level).concat(allWords(level === 'N5' ? 'N4' : 'N5'));
-  const order = shuffle(words).slice(0, Math.min(15, words.length));
 
-  return order.map(w => {
+  // Chỉ đảo thứ tự, không cắt bớt: mọi từ mới của bài đều phải được hỏi.
+  return shuffle(words).map(w => {
     const id = Store.wordId(level, lesson, w);
     if (mode === 'type') {
       return { type: 'type', word: w, id, prompt: w.m, sub: w.k ? `Gợi ý chữ Hán: ${w.k}` : '' };
@@ -612,8 +741,12 @@ function buildGrammarQuestions(lesson) {
   });
 }
 
-/** Bộ máy chạy một loạt câu hỏi và chấm điểm. */
-function runQuiz(box, questions, scoreKey, restart) {
+/**
+ * Bộ máy chạy một loạt câu hỏi và chấm điểm.
+ * opts: { next: {label, run}, done: lời nhắn khi hết đợt cuối, onFinish: callback }
+ */
+function runQuiz(box, questions, scoreKey, restart, opts) {
+  opts = opts || {};
   let i = 0, correct = 0;
   const wrong = [];
 
@@ -681,6 +814,7 @@ function runQuiz(box, questions, scoreKey, restart) {
   function finish() {
     const pct = Math.round((correct / questions.length) * 100);
     if (scoreKey) Store.saveScore(scoreKey, correct, questions.length);
+    if (opts.onFinish) opts.onFinish();
     const emoji = pct >= 90 ? '🏆' : pct >= 70 ? '👏' : pct >= 50 ? '💪' : '📖';
     box.innerHTML = `
       <div class="done">
@@ -691,11 +825,14 @@ function runQuiz(box, questions, scoreKey, restart) {
             ? `<li>${speakBtn(q.word.h)} <b>${esc(q.word.h)}</b>${q.word.k ? ` (${esc(q.word.k)})` : ''} — ${esc(q.word.m)}</li>`
             : `<li>${esc(q.choices[q.answer])}</li>`).join('')}</ul>
         </div>` : `<p>Không sai câu nào. Xuất sắc!</p>`}
-        <button id="again">Làm lại</button>
+        ${opts.done ? `<p class="note">${esc(opts.done)}</p>` : ''}
+        <button id="again">Làm lại đợt này</button>
+        ${opts.next ? `<button id="next" class="primary">${esc(opts.next.label)}</button>` : ''}
       </div>`;
     box.querySelector('#again').addEventListener('click', () => {
       if (restart) restart(); else { i = 0; correct = 0; wrong.length = 0; questions = shuffle(questions); draw(); }
     });
+    if (opts.next) box.querySelector('#next').addEventListener('click', opts.next.run);
   }
   draw();
 }

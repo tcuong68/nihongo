@@ -290,6 +290,24 @@ table.vocab {
 
 /* ---- Bài tập ---- */
 
+/* Bài tập phủ hết từ vựng của bài, chia thành từng đợt */
+.batch-bar { justify-content: space-between; }
+.batch-bar select {
+  font: inherit; font-size: .9rem; padding: 6px 10px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--ink);
+}
+.cover { font-size: .85rem; color: var(--muted); }
+.cover b { color: var(--ink); }
+
+.batch-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.batch-info { font-size: .85rem; color: var(--muted); }
+.batch-rounds { display: flex; gap: 4px; flex-wrap: wrap; }
+.batch-rounds button { padding: 4px 11px; font-size: .85rem; border-radius: 8px; }
+.batch-rounds .round.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+
 .quiz { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
 .quiz-top { display: flex; justify-content: space-between; font-size: .85rem; color: var(--muted); margin-bottom: 8px; }
 .q-prompt { font-size: 2.1rem; text-align: center; margin: 22px 0 4px; line-height: 1.3; }

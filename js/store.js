@@ -12,7 +12,8 @@ const Store = (() => {
     srs: {},      // { wordId: { box, due (timestamp), seen, correct } }
     starred: {},  // { wordId: true }
     scores: {},   // { "N5-12-vocab": { best, last, count } }
-    settings: { rate: 0.9, showRomaji: true, voice: '' },
+    // quizBatch: số câu mỗi đợt làm bài (0 = làm hết từ vựng của bài trong một lượt)
+    settings: { rate: 0.9, showRomaji: true, voice: '', quizBatch: 15 },
     // Bộ kanji mỗi ngày: date/chars là bộ đã chốt cho hôm nay, shown là ngày đã hiện popup
     daily: { enabled: true, count: 20, level: 'all', date: '', chars: [], shown: '' },
     // Bài mở gần nhất — dùng cho nhắc ôn tập hằng giờ (js/notify.js)
@@ -94,6 +95,9 @@ const Store = (() => {
   function boxOf(id) {
     return state.srs[id] ? state.srs[id].box : 0;
   }
+
+  /** Số lần một từ đã được luyện — dùng để biết đã đụng tới từ nào chưa. */
+  const seenOf = id => (state.srs[id] ? state.srs[id].seen : 0);
 
   function toggleStar(id) {
     if (state.starred[id]) delete state.starred[id];
@@ -224,7 +228,7 @@ const Store = (() => {
   }
 
   return {
-    wordId, review, due, boxOf, toggleStar, isStarred,
+    wordId, review, due, boxOf, seenOf, toggleStar, isStarred,
     saveScore, getScore, setSetting, settings, daily, setDaily, stats, reset,
     current, setCurrent, onSave,
     exportData, importData,
